@@ -3,17 +3,9 @@ name: Ephemeral env workflow
 # Example manual trigger:  gh workflow run ephemeral-env.yml --ref fix_ephemerals  --field comment_body="/testenv up" --field issue_number=666
 
 on:
-  issue_comment:
-    types: [created]
-  workflow_dispatch:
-    inputs:
-      comment_body:
-        description: 'Comment body to simulate /testenv command'
-        required: true
-        default: '/testenv up'
-      issue_number:
-        description: 'Issue or PR number'
-        required: true
+  pull_request:
+    branches:
+      - "main"
 
 jobs:
   ephemeral-env-comment:

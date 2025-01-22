@@ -1,0 +1,93 @@
+# .github/workflows/release-docker-publish.yml
+
+name: "Release Docker Publish"
+
+on:
+  release:
+    types: [published, edited]
+    # This event fires when you click "Publish release" in GitHub UI.
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  release-docker:
+    # Only run if the release is targeting the master branch
+    if: ${{ github.event.release.target_commitish == 'master' }}
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: "Checkout Repository at Release Commit"
+        uses: actions/checkout@v4
+        with:
+          # Do not persist credentials to avoid modifying the repo
+          persist-credentials: false
+
+      - name: "Extract Version from Tag"
+        id: get_version
+        shell: bash
+        run: |
+          # GITHUB_REF might look like: refs/tags/v1.2.3
+          # Remove the "refs/tags/" prefix to get something like "v1.2.3"
+          VERSION="${GITHUB_REF#refs/tags/}"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: "Setup Docker Environment"
+        uses: ./.github/actions/setup-docker
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          build: "true"
+        # This custom action is expected to configure Docker & log into AWS ECR.
+        # Ensure no references to Docker Hub if you only use ECR.
+
+      - name: "Setup supersetbot"
+        uses: ./.github/actions/setup-supersetbot/
+        # Assuming this custom action is needed for your environment
+
+      - name: "Build & Push Docker Image (version + latest)"
+        shell: bash
+        env:
+          # Pass the version extracted from the tag
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Multi-architecture example. Adjust if you only need amd64.
+          PLATFORM_ARG="--platform linux/arm64 --platform linux/amd64"
+
+          # In a release workflow, we typically push.
+          PUSH_OR_LOAD="--push"
+
+          # Construct two tags:
+          # 1) Versioned tag, e.g. :GHA-v1.2.3
+          IMAGE_TAG_VERSION="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/superset:GHA-${VERSION}"
+
+          # 2) 'latest' tag
+          IMAGE_TAG_LATEST="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/superset:latest"
+
+          supersetbot docker \
+            $PUSH_OR_LOAD \
+            --preset "dev" \
+            --context "$EVENT" \
+            --context-ref "$RELEASE" $FORCE_LATEST \
+            --extra-flags "--build-arg INCLUDE_CHROMIUM=false --tag $IMAGE_TAG_VERSION --tag $IMAGE_TAG_LATEST" \
+            $PLATFORM_ARG
+
+          # If you use multiple presets or a different preset than "dev," adjust accordingly.
+
+      - name: "Pull & Verify Image (versioned)"
+        run: |
+          IMAGE_TAG="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/superset:GHA-${{ steps.get_version.outputs.VERSION }}"
+          docker pull "$IMAGE_TAG"
+
+      - name: "Print Docker Stats (versioned)"
+        run: |
+          IMAGE_TAG="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/superset:GHA-${{ steps.get_version.outputs.VERSION }}"
+          echo "Git SHA: ${{ github.sha }}"
+          echo "Image: $IMAGE_TAG"
+          docker images "$IMAGE_TAG"
+          docker history "$IMAGE_TAG"
