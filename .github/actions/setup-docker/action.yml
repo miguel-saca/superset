@@ -1,24 +1,25 @@
 name: "Setup Docker Environment"
-description: "Reusable steps for setting up QEMU, Docker Buildx, DockerHub login, Supersetbot, and optionally Docker Compose"
+description: "Reusable steps for setting up QEMU, Docker Buildx, AWS ECR login, Supersetbot, and optionally Docker Compose"
 inputs:
   build:
     description: "Used for building?"
     required: false
     default: "false"
-  dockerhub-user:
-    description: "DockerHub username"
+  aws-access-key-id:
+    description: "AWS Access Key ID"
     required: false
-  dockerhub-token:
-    description: "DockerHub token"
+  aws-secret-access-key:
+    description: "AWS Secret Access Key"
     required: false
+  aws-region:
+    description: "AWS Region"
+    required: false
+    default: "us-west-2"
   install-docker-compose:
     description: "Flag to install Docker Compose"
     required: false
     default: "true"
-  login-to-dockerhub:
-    description: "Whether you want to log into dockerhub"
-    required: false
-    default: "true"
+
 outputs: {}
 runs:
   using: "composite"
@@ -32,13 +33,16 @@ runs:
       if: ${{ inputs.build == 'true' }}
       uses: docker/setup-buildx-action@v3
 
-    - name: Try to login to DockerHub
-      if: ${{ inputs.login-to-dockerhub == 'true' }}
-      continue-on-error: true
-      uses: docker/login-action@v3
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
       with:
-        username: ${{ inputs.dockerhub-user }}
-        password: ${{ inputs.dockerhub-token }}
+        aws-access-key-id: ${{ inputs.aws-access-key-id }}
+        aws-secret-access-key: ${{ inputs.aws-secret-access-key }}
+        aws-region: ${{ inputs.aws-region }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
 
     - name: Install Docker Compose
       if: ${{ inputs.install-docker-compose == 'true' }}

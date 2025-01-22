@@ -1,8 +1,9 @@
 name: Publish a Release
 
 on:
-  release:
-    types: [published, edited]
+  pull_request:
+    branches:
+      - "main"
 
   # Can be triggered manually
   workflow_dispatch:
