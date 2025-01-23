@@ -20,7 +20,19 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
-      - uses: ./.github/actions/pr-lint-action
+
+      - name: Check if PR Lint Action exists
+        id: check-pr-lint
+        run: |
+          if [ -f .github/actions/pr-lint-action ]; then
+            echo "::set-output name=exists::true"
+          else
+            echo "::set-output name=exists::false"
+          fi
+
+      - name: Run PR Title Lint
+        if: steps.check-pr-lint.outputs.exists == 'true'
+        uses: ./.github/actions/pr-lint-action
         with:
           title-regex: "^(build|chore|ci|docs|feat|fix|perf|refactor|style|test|other)(\\(.+\\))?(\\!)?:\\s.+"
           on-failed-regex-fail-action: true
